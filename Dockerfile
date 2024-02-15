@@ -1,12 +1,15 @@
-FROM node:alpine as base
+ARG ALPINE_VERSION=3.19
+
+FROM --platform=$BUILDPLATFORM chriswayg/tor-alpine:latest as tor
+FROM --platform=$BUILDPLATFORM node:alpine${ALPINE_VERSION} as base
 LABEL Maintainer="Shahrad Elahi <https://github.com/shahradelahi>"
 WORKDIR /app
 
 ENV TZ=UTC
 RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
 
-COPY --from=chriswayg/tor-alpine:latest --platform=$BUILDPLATFORM /usr/local/bin/obfs4proxy /usr/local/bin/obfs4proxy
-COPY --from=chriswayg/tor-alpine:latest --platform=$BUILDPLATFORM /usr/local/bin/meek-server /usr/local/bin/meek-server
+COPY --from=tor /usr/local/bin/obfs4proxy /usr/local/bin/obfs4proxy
+COPY --from=tor /usr/local/bin/meek-server /usr/local/bin/meek-server
 
 # Update and upgrade packages
 RUN apk update && apk upgrade &&\
@@ -30,7 +33,6 @@ RUN chmod -R +x /usr/local/bin
 COPY web/package.json web/pnpm-lock.yaml ./
 
 # Base env
-ENV ORIGIN=http://127.0.0.1:3000
 ENV PROTOCOL_HEADER=x-forwarded-proto
 ENV HOST_HEADER=x-forwarded-host
 
@@ -62,6 +64,11 @@ FROM base AS release
 COPY --from=build /tmp/node_modules node_modules
 COPY --from=build /tmp/build build
 
+# Fix permissions
+RUN mkdir -p /data && chmod 700 /data
+RUN mkdir -p /etc/torrc.d && chmod -R 400 /etc/torrc.d
+RUN mkdir -p /var/vlogs && touch /var/vlogs/web && chmod -R 600 /var/vlogs
+
 ENV NODE_ENV=production
 ENV LOG_LEVEL=error
 
@@ -73,11 +80,6 @@ ENTRYPOINT ["/entrypoint.sh"]
 # Healthcheck
 HEALTHCHECK --interval=60s --timeout=3s --start-period=20s --retries=3 \
  CMD curl -f http://127.0.0.1:3000/api/health || exit 1
-
-# Fix permissions
-RUN mkdir -p /data && chmod 700 /data
-RUN mkdir -p /etc/torrc.d && chmod -R 400 /etc/torrc.d
-RUN mkdir -p /var/vlogs && touch /var/vlogs/web && chmod -R 600 /var/vlogs
 
 # Volumes
 VOLUME ["/etc/torrc.d", "/data", "/var/vlogs"]

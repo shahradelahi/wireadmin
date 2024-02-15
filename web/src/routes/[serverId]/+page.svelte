@@ -96,7 +96,6 @@
   <span class="mb-0.5"> {data.server.name} </span>
 </div>
 
-
 <div class="space-y-3.5">
   <Card>
     <CardHeader>

@@ -1,12 +1,15 @@
-FROM node:alpine as base
+ARG ALPINE_VERSION=3.19
+
+FROM --platform=$BUILDPLATFORM chriswayg/tor-alpine:latest as tor
+FROM --platform=$BUILDPLATFORM node:alpine${ALPINE_VERSION} as base
 LABEL Maintainer="Shahrad Elahi <https://github.com/shahradelahi>"
 WORKDIR /app
 
 ENV TZ=UTC
 RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
 
-COPY --from=chriswayg/tor-alpine:latest /usr/local/bin/obfs4proxy /usr/local/bin/obfs4proxy
-COPY --from=chriswayg/tor-alpine:latest /usr/local/bin/meek-server /usr/local/bin/meek-server
+COPY --from=tor /usr/local/bin/obfs4proxy /usr/local/bin/obfs4proxy
+COPY --from=tor /usr/local/bin/meek-server /usr/local/bin/meek-server
 
 # Update and upgrade packages
 RUN apk update && apk upgrade &&\
@@ -35,26 +38,25 @@ ENV PATH="$PNPM_HOME:$PATH"
 RUN corepack enable
 
 # Base env
-ENV ORIGIN=http://127.0.0.1:5173,http://localhost:5173
 ENV PROTOCOL_HEADER=x-forwarded-proto
 ENV HOST_HEADER=x-forwarded-host
 
 
 FROM base AS runner
 
+ENV VERSION=0.0.0-dev
 ENV NODE_ENV=development
 ENV LOG_LEVEL=debug
-
-ENV VERSION=0.0.0-dev
-
-COPY docker-entrypoint.sh /entrypoint.sh
-RUN chmod +x /entrypoint.sh
-ENTRYPOINT ["/entrypoint.sh"]
 
 # Fix permissions
 RUN mkdir -p /data && chmod 700 /data
 RUN mkdir -p /etc/torrc.d && chmod -R 400 /etc/torrc.d
 RUN mkdir -p /var/vlogs && touch /var/vlogs/web && chmod -R 600 /var/vlogs
+
+# Setup entrypoint
+COPY docker-entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
+ENTRYPOINT ["/entrypoint.sh"]
 
 # Volumes
 VOLUME ["/etc/torrc.d", "/data", "/var/vlogs"]
